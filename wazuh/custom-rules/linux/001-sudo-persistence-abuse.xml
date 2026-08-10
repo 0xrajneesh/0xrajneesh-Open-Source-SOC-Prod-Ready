@@ -1,0 +1,31 @@
+<group name="linux,custom,privilege_escalation,">
+  <rule id="121001" level="7">
+    <if_group>syslog,linux</if_group>
+    <match>sudo:</match>
+    <description>Linux sudo activity observed</description>
+    <group>linux,sudo,</group>
+  </rule>
+
+  <rule id="121002" level="11">
+    <if_sid>121001</if_sid>
+    <match>COMMAND=/bin/bash -c</match>
+    <description>Suspicious sudo shell execution detected</description>
+    <mitre>
+      <id>T1548</id>
+      <id>T1059.004</id>
+    </mitre>
+    <group>attack.privilege_escalation,linux_sudo_shell,</group>
+  </rule>
+
+  <rule id="121003" level="12">
+    <if_group>syslog,linux</if_group>
+    <match>CRON</match>
+    <match>/tmp/</match>
+    <description>Potential Linux persistence via cron entry executing from temporary path</description>
+    <mitre>
+      <id>T1053.003</id>
+      <id>T1036</id>
+    </mitre>
+    <group>attack.persistence,linux_cron_persistence,</group>
+  </rule>
+</group>

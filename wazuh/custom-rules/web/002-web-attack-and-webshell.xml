@@ -1,0 +1,115 @@
+<!--
+  Web :: Application Attacks and Webshells
+  Rule ID range : 130100-130199
+  Data source   : nginx/apache access logs, ModSecurity audit log, syscheck on webroot
+  MITRE         : TA0001 Initial Access, TA0003 Persistence
+-->
+<group name="web,web_attack,custom,">
+
+  <rule id="130100" level="10">
+    <if_group>web|accesslog</if_group>
+    <field name="url" type="pcre2">(?i)(\.\./\.\./|%2e%2e%2f|/etc/passwd|/proc/self/environ|c:\\windows\\win\.ini)</field>
+    <description>Path traversal or local file inclusion attempt against $(url) from $(srcip)</description>
+    <mitre>
+      <id>T1190</id>
+    </mitre>
+    <group>attack.initial_access,path_traversal,</group>
+  </rule>
+
+  <rule id="130101" level="10">
+    <if_group>web|accesslog</if_group>
+    <field name="url" type="pcre2">(?i)(union(\s|\+|%20)+select|information_schema|sleep\((\d+)\)|benchmark\(|or(\s|\+|%20)+1=1|xp_cmdshell)</field>
+    <description>SQL injection pattern in request from $(srcip)</description>
+    <mitre>
+      <id>T1190</id>
+    </mitre>
+    <group>attack.initial_access,sql_injection,</group>
+  </rule>
+
+  <rule id="130102" level="12">
+    <if_group>web|accesslog</if_group>
+    <field name="url" type="pcre2">(?i)(\$\{jndi:(ldaps?|rmi|dns)|\{\{.*\}\}|__proto__|\bT\(java\.lang|%24%7bjndi)</field>
+    <description>Template, JNDI, or prototype-pollution injection attempt from $(srcip)</description>
+    <mitre>
+      <id>T1190</id>
+      <id>T1059</id>
+    </mitre>
+    <group>attack.initial_access,injection_rce,</group>
+  </rule>
+
+  <rule id="130103" level="12">
+    <if_group>web|accesslog</if_group>
+    <field name="url" type="pcre2">(?i)(;|%3b|\||%7c|`|\$\()\s*(cat|id|whoami|uname|curl|wget|nc|bash|sh|powershell)\b</field>
+    <description>OS command injection attempt against $(url) from $(srcip)</description>
+    <mitre>
+      <id>T1190</id>
+      <id>T1059</id>
+    </mitre>
+    <group>attack.initial_access,command_injection,</group>
+  </rule>
+
+  <!-- Scanner fingerprints -->
+  <rule id="130104" level="8">
+    <if_group>web|accesslog</if_group>
+    <field name="user_agent" type="pcre2">(?i)(sqlmap|nikto|nmap|acunetix|nuclei|dirbuster|gobuster|feroxbuster|wpscan|masscan|zgrab)</field>
+    <description>Known scanner user agent from $(srcip): $(user_agent)</description>
+    <mitre>
+      <id>T1595.002</id>
+    </mitre>
+    <group>attack.reconnaissance,web_scanner,</group>
+  </rule>
+
+  <!-- Content discovery burst -->
+  <rule id="130105" level="6">
+    <if_group>web|accesslog</if_group>
+    <field name="status_code">^40[34]$</field>
+    <description>Web 403/404 response for $(srcip)</description>
+    <group>web_notfound,</group>
+  </rule>
+
+  <rule id="130106" level="11" frequency="40" timeframe="120">
+    <if_matched_sid>130105</if_matched_sid>
+    <same_field>srcip</same_field>
+    <description>Directory brute force from $(srcip): 40+ 403/404 responses in 2 minutes</description>
+    <mitre>
+      <id>T1595.003</id>
+    </mitre>
+    <group>attack.reconnaissance,dirbrute,correlation,</group>
+  </rule>
+
+  <!-- Webshell dropped into a served directory -->
+  <rule id="130107" level="14">
+    <if_group>syscheck</if_group>
+    <field name="file" type="pcre2">^/(var/www|usr/share/nginx|srv/http|opt/tomcat/webapps).*\.(php|phtml|jsp|jspx|aspx?|cgi)$</field>
+    <description>New or modified server-side script in webroot: $(file) - webshell candidate</description>
+    <mitre>
+      <id>T1505.003</id>
+    </mitre>
+    <group>attack.persistence,webshell,</group>
+  </rule>
+
+  <!-- Webshell interaction: web server spawning a shell -->
+  <rule id="130108" level="15">
+    <if_group>audit_command</if_group>
+    <field name="audit.exe" type="pcre2">/(sh|bash|dash|python3?|perl)$</field>
+    <field name="audit.ppid.exe" type="pcre2">/(nginx|apache2|httpd|php-fpm\d*|java)$</field>
+    <description>Web server process spawned an interactive shell on $(agent.name) - active webshell</description>
+    <mitre>
+      <id>T1505.003</id>
+      <id>T1059.004</id>
+    </mitre>
+    <group>attack.execution,webshell_exec,</group>
+  </rule>
+
+  <!-- Successful exploit indicator: attack pattern followed by 200 on same source -->
+  <rule id="130109" level="14">
+    <if_sid>130100,130101,130102,130103</if_sid>
+    <field name="status_code">^(200|201|500)$</field>
+    <description>Injection payload from $(srcip) returned $(status_code) - possible successful exploitation</description>
+    <mitre>
+      <id>T1190</id>
+    </mitre>
+    <group>attack.initial_access,exploit_success,</group>
+  </rule>
+
+</group>

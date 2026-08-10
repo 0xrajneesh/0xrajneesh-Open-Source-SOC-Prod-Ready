@@ -1,0 +1,112 @@
+<!--
+  Threat Hunting :: Intel Matching and Behavioural Anomalies
+  Rule ID range : 170000-170099
+  Data source   : Sysmon 3/22, Zeek/Suricata via Graylog forward, CDB lists, integrator output
+  Depends on    : etc/lists/known-bad-ips, etc/lists/malicious-domains, etc/lists/lolbins
+  MITRE         : TA0011 Command and Control
+-->
+<group name="threat_hunting,custom,">
+
+  <!-- CDB intel matches -->
+  <rule id="170000" level="13">
+    <if_group>sysmon_event3,web,firewall</if_group>
+    <list field="dstip" lookup="address_match_key">etc/lists/known-bad-ips</list>
+    <description>Connection to intel-flagged IP $(dstip) from $(agent.name)</description>
+    <mitre>
+      <id>T1071</id>
+    </mitre>
+    <group>attack.command_and_control,intel_ip_match,</group>
+  </rule>
+
+  <rule id="170001" level="13">
+    <if_group>sysmon_event_22,dns</if_group>
+    <list field="win.eventdata.queryName" lookup="match_key">etc/lists/malicious-domains</list>
+    <description>DNS query for intel-flagged domain $(win.eventdata.queryName) from $(agent.name)</description>
+    <mitre>
+      <id>T1071.004</id>
+    </mitre>
+    <group>attack.command_and_control,intel_domain_match,</group>
+  </rule>
+
+  <!-- Newly observed / anonymised infrastructure -->
+  <rule id="170002" level="11">
+    <if_group>sysmon_event_22,dns</if_group>
+    <field name="win.eventdata.queryName" type="pcre2">(?i)\.(top|xyz|tk|gq|ml|cf|zip|mov|click|country|work|rest|monster)$</field>
+    <description>DNS query to a low-reputation TLD: $(win.eventdata.queryName)</description>
+    <mitre>
+      <id>T1568</id>
+    </mitre>
+    <group>suspicious_dns,</group>
+  </rule>
+
+  <!-- DGA / DNS tunnelling heuristics -->
+  <rule id="170003" level="12">
+    <if_group>sysmon_event_22,dns</if_group>
+    <field name="win.eventdata.queryName" type="pcre2">^[a-z0-9]{25,}\.[a-z0-9.-]+$</field>
+    <description>Long random-looking DNS label queried - DGA or DNS tunnel candidate: $(win.eventdata.queryName)</description>
+    <mitre>
+      <id>T1568.002</id>
+      <id>T1048.003</id>
+    </mitre>
+    <group>attack.command_and_control,dga_candidate,</group>
+  </rule>
+
+  <rule id="170004" level="13" frequency="30" timeframe="300">
+    <if_matched_sid>170003</if_matched_sid>
+    <same_field>agent.name</same_field>
+    <description>DNS tunnelling suspected on $(agent.name): 30+ high-entropy queries in 5 minutes</description>
+    <mitre>
+      <id>T1048.003</id>
+    </mitre>
+    <group>attack.exfiltration,dns_tunnel,correlation,</group>
+  </rule>
+
+  <!-- Tor / anonymiser egress -->
+  <rule id="170005" level="12">
+    <if_group>sysmon_event3,firewall</if_group>
+    <field name="dstport" type="pcre2">^(9001|9030|9050|9150)$</field>
+    <description>Tor-associated port $(dstport) contacted from $(agent.name)</description>
+    <mitre>
+      <id>T1090.003</id>
+    </mitre>
+    <group>attack.command_and_control,anonymiser,</group>
+  </rule>
+
+  <!-- Rare LOLBin making an outbound connection -->
+  <rule id="170006" level="12">
+    <if_group>sysmon_event3</if_group>
+    <list field="win.eventdata.image" lookup="match_key">etc/lists/lolbins</list>
+    <description>LOLBin $(win.eventdata.image) made a network connection to $(win.eventdata.destinationIp)</description>
+    <mitre>
+      <id>T1218</id>
+      <id>T1105</id>
+    </mitre>
+    <group>attack.defense_evasion,lolbin_network,</group>
+  </rule>
+
+  <!-- Threat intel enrichment from the MISP integrator (see wazuh/integrations/) -->
+  <rule id="170010" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="integration">^misp$</field>
+    <description>MISP integration event</description>
+    <group>misp,</group>
+  </rule>
+
+  <rule id="170011" level="13">
+    <if_sid>170010</if_sid>
+    <field name="misp.category" type="pcre2">.+</field>
+    <description>MISP IOC match [$(misp.category)] value $(misp.value) on $(agent.name)</description>
+    <mitre>
+      <id>T1071</id>
+    </mitre>
+    <group>attack.command_and_control,misp_alert,threat_intel_match,</group>
+  </rule>
+
+  <rule id="170012" level="14">
+    <if_sid>170011</if_sid>
+    <list field="agent.name" lookup="match_key">etc/lists/critical-assets</list>
+    <description>MISP IOC match on CRITICAL asset $(agent.name) - immediate triage</description>
+    <group>attack.command_and_control,misp_alert,critical_asset_access,</group>
+  </rule>
+
+</group>

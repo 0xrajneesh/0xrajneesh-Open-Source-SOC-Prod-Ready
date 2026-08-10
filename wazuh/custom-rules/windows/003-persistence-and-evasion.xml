@@ -1,0 +1,126 @@
+<!--
+  Windows :: Persistence and Defense Evasion
+  Rule ID range : 120200-120299
+  Data source   : Sysmon 1/11/12/13, Security 4697, System 7045
+  MITRE         : TA0003 Persistence, TA0005 Defense Evasion, TA0040 Impact
+-->
+<group name="windows,sysmon,persistence,defense_evasion,custom,">
+
+  <rule id="120200" level="5">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID">^(7045|4697)$</field>
+    <description>New Windows service installed: $(win.eventdata.serviceName)</description>
+    <mitre>
+      <id>T1543.003</id>
+    </mitre>
+    <group>service_install,</group>
+  </rule>
+
+  <rule id="120201" level="13">
+    <if_sid>120200</if_sid>
+    <field name="win.eventdata.imagePath" type="pcre2">(?i)(\\users\\|\\temp\\|\\appdata\\|\\programdata\\|\\downloads\\|powershell|cmd\.exe\s*/c)</field>
+    <description>Service installed from a user-writable path or script interpreter: $(win.eventdata.imagePath)</description>
+    <mitre>
+      <id>T1543.003</id>
+      <id>T1036</id>
+    </mitre>
+    <group>attack.persistence,service_install,</group>
+  </rule>
+
+  <rule id="120202" level="12">
+    <if_group>sysmon_event_13</if_group>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\(CurrentVersion\\Run|RunOnce|Winlogon\\(Shell|Userinit)|Image File Execution Options|AppInit_DLLs)</field>
+    <description>Autorun persistence key modified: $(win.eventdata.targetObject)</description>
+    <mitre>
+      <id>T1547.001</id>
+      <id>T1546.012</id>
+    </mitre>
+    <group>attack.persistence,registry_runkey,</group>
+  </rule>
+
+  <rule id="120203" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)schtasks.{0,60}/create.{0,200}(\\users\\|\\temp\\|\\appdata\\|powershell|-enc|mshta|rundll32|curl|certutil)</field>
+    <description>Scheduled task created with a suspicious action payload</description>
+    <mitre>
+      <id>T1053.005</id>
+    </mitre>
+    <group>attack.persistence,scheduled_task,</group>
+  </rule>
+
+  <rule id="120204" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(wmic.{0,40}(process call create|/node:)|Register-WmiEvent|__EventFilter|CommandLineEventConsumer)</field>
+    <description>WMI event subscription or remote WMI execution observed</description>
+    <mitre>
+      <id>T1546.003</id>
+      <id>T1047</id>
+    </mitre>
+    <group>attack.persistence,wmi,</group>
+  </rule>
+
+  <rule id="120205" level="14">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(vssadmin.{0,40}delete\s+shadows|wbadmin.{0,40}delete\s+catalog|bcdedit.{0,60}(recoveryenabled\s+no|bootstatuspolicy\s+ignoreallfailures)|wmic.{0,30}shadowcopy\s+delete)</field>
+    <description>Backup or shadow copy destruction command executed - ransomware precursor</description>
+    <mitre>
+      <id>T1490</id>
+    </mitre>
+    <group>attack.impact,ransomware_precursor,</group>
+  </rule>
+
+  <rule id="120206" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(Set-MpPreference.{0,60}Disable|Add-MpPreference.{0,40}ExclusionPath|netsh\s+advfirewall\s+set\s+.{0,20}state\s+off|sc\s+(stop|config)\s+(WinDefend|Sense)|wevtutil\s+cl\s)</field>
+    <description>Security control tampering: AV, firewall, or event log disabled or cleared</description>
+    <mitre>
+      <id>T1562.001</id>
+      <id>T1070.001</id>
+    </mitre>
+    <group>attack.defense_evasion,security_tampering,</group>
+  </rule>
+
+  <rule id="120207" level="11">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(rundll32|regsvr32|mshta|installutil|msbuild|cmstp|odbcconf|forfiles|pcalua)\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(https?://|\\\\[a-z0-9._-]+\\|javascript:|scrobj\.dll|/i:)</field>
+    <description>LOLBin $(win.eventdata.image) executed with a remote or scriptlet payload</description>
+    <mitre>
+      <id>T1218</id>
+      <id>T1105</id>
+    </mitre>
+    <group>attack.defense_evasion,lolbin,</group>
+  </rule>
+
+  <rule id="120208" level="4">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(whoami|net1?|nltest|systeminfo|quser|tasklist|arp|route|ipconfig|dsquery)\.exe$</field>
+    <description>Host or domain discovery utility executed: $(win.eventdata.image)</description>
+    <mitre>
+      <id>T1082</id>
+    </mitre>
+    <group>discovery,</group>
+  </rule>
+
+  <rule id="120209" level="12" frequency="6" timeframe="180">
+    <if_matched_sid>120208</if_matched_sid>
+    <same_field>win.eventdata.parentProcessGuid</same_field>
+    <description>Discovery burst: 6+ recon utilities from one parent process on $(win.system.computer)</description>
+    <mitre>
+      <id>T1082</id>
+      <id>T1087</id>
+    </mitre>
+    <group>attack.discovery,recon_burst,correlation,</group>
+  </rule>
+
+  <rule id="120210" level="12">
+    <if_group>sysmon_event_11</if_group>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\\startup\\.*\.(lnk|vbs|js|bat|cmd|ps1|hta)$</field>
+    <description>Executable content dropped into a Startup folder: $(win.eventdata.targetFilename)</description>
+    <mitre>
+      <id>T1547.001</id>
+    </mitre>
+    <group>attack.persistence,startup_folder,</group>
+  </rule>
+
+</group>

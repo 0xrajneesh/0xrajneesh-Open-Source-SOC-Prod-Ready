@@ -1,0 +1,70 @@
+<!--
+  Linux :: Container and Workload Abuse
+  Rule ID range : 110200-110299
+  Data source   : auditd execve, docker daemon logs, syscheck
+  MITRE         : TA0004 Privilege Escalation, TA0005 Defense Evasion
+-->
+<group name="linux,docker,container,custom,">
+
+  <rule id="110200" level="13">
+    <if_group>audit_command</if_group>
+    <field name="audit.execve" type="pcre2">(?i)docker\s+run.{0,200}(--privileged|--pid=host|--net=host|-v\s*/:/|--cap-add[= ]SYS_ADMIN|-v\s*/var/run/docker\.sock)</field>
+    <description>Container started with host-escape capable flags on $(agent.name)</description>
+    <mitre>
+      <id>T1610</id>
+      <id>T1611</id>
+    </mitre>
+    <group>attack.privilege_escalation,container_escape,</group>
+  </rule>
+
+  <rule id="110201" level="12">
+    <if_group>audit_command</if_group>
+    <field name="audit.execve" type="pcre2">(?i)(docker|kubectl|crictl)\s+exec\s+.{0,80}(sh|bash)\b</field>
+    <description>Interactive shell opened inside a running container by $(audit.uid)</description>
+    <mitre>
+      <id>T1609</id>
+    </mitre>
+    <group>attack.execution,container_exec,</group>
+  </rule>
+
+  <rule id="110202" level="12">
+    <if_group>syscheck</if_group>
+    <field name="file" type="pcre2">^/var/run/docker\.sock$</field>
+    <description>Docker socket permissions or ownership changed on $(agent.name)</description>
+    <mitre>
+      <id>T1611</id>
+    </mitre>
+    <group>attack.privilege_escalation,docker_socket,</group>
+  </rule>
+
+  <rule id="110203" level="13">
+    <if_group>audit_command</if_group>
+    <field name="audit.execve" type="pcre2">(?i)(curl|wget).{0,60}169\.254\.169\.254</field>
+    <description>Cloud instance metadata endpoint queried from $(agent.name) - credential theft attempt</description>
+    <mitre>
+      <id>T1552.005</id>
+    </mitre>
+    <group>attack.credential_access,imds_access,</group>
+  </rule>
+
+  <rule id="110204" level="12">
+    <if_group>audit_command</if_group>
+    <field name="audit.execve" type="pcre2">(?i)(xmrig|minerd|cpuminer|stratum\+tcp|--donate-level|nicehash)</field>
+    <description>Cryptomining process or pool argument observed on $(agent.name)</description>
+    <mitre>
+      <id>T1496</id>
+    </mitre>
+    <group>attack.impact,cryptomining,</group>
+  </rule>
+
+  <rule id="110205" level="12">
+    <if_group>audit_command</if_group>
+    <field name="audit.execve" type="pcre2">(?i)(chattr\s+[+]i|setcap\s+cap_setuid|chmod\s+[u]?[+]s\s|find\s+/\s+-perm\s+-4000)</field>
+    <description>SUID or capability manipulation on $(agent.name) - privilege escalation groundwork</description>
+    <mitre>
+      <id>T1548.001</id>
+    </mitre>
+    <group>attack.privilege_escalation,suid_abuse,</group>
+  </rule>
+
+</group>

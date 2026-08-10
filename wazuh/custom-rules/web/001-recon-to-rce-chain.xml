@@ -1,0 +1,29 @@
+<group name="web,custom,attack,">
+  <rule id="123001" level="6">
+    <if_group>web</if_group>
+    <field name="url" type="pcre2">(?i)(/wp-admin|/admin|/login|/api/)</field>
+    <description>Administrative or high-value web path accessed</description>
+    <group>web_recon,</group>
+  </rule>
+
+  <rule id="123002" level="9" frequency="10" timeframe="60">
+    <if_matched_sid>123001</if_matched_sid>
+    <same_field>srcip</same_field>
+    <description>High-rate reconnaissance against web administrative paths</description>
+    <mitre>
+      <id>T1595</id>
+    </mitre>
+    <group>attack.reconnaissance,web_recon_burst,</group>
+  </rule>
+
+  <rule id="123003" level="13">
+    <if_group>web</if_group>
+    <field name="url" type="pcre2">(?i)(cmd=|powershell|/bin/sh|wget\s|curl\s|base64,|%3B|%7C)</field>
+    <description>Potential command injection or web exploitation payload detected</description>
+    <mitre>
+      <id>T1190</id>
+      <id>T1059</id>
+    </mitre>
+    <group>attack.initial_access,web_rce_pattern,</group>
+  </rule>
+</group>

@@ -1,0 +1,109 @@
+<!--
+  Firewall :: Perimeter and Egress Anomalies
+  Rule ID range : 140000-140099
+  Data source   : pfSense/OPNsense filterlog, FortiGate, iptables (see wazuh/custom-decoders/)
+  Depends on    : etc/lists/known-bad-ips
+  MITRE         : TA0011 Command and Control, TA0010 Exfiltration
+-->
+<group name="firewall,custom,">
+
+  <rule id="140000" level="3">
+    <decoded_as>pfsense-filterlog</decoded_as>
+    <description>pfSense/OPNsense filter event decoded</description>
+    <group>firewall_event,</group>
+  </rule>
+
+  <rule id="140001" level="5">
+    <if_sid>140000</if_sid>
+    <field name="action">^block$</field>
+    <description>Perimeter firewall blocked $(srcip):$(srcport) -&gt; $(dstip):$(dstport)</description>
+    <group>firewall_block,</group>
+  </rule>
+
+  <!-- Horizontal scan: one source hitting many destination ports -->
+  <rule id="140002" level="10" frequency="25" timeframe="120">
+    <if_matched_sid>140001</if_matched_sid>
+    <same_field>srcip</same_field>
+    <different_field>dstport</different_field>
+    <description>Port scan from $(srcip): 25+ distinct blocked ports in 2 minutes</description>
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+    <group>attack.discovery,port_scan,correlation,</group>
+  </rule>
+
+  <!-- Vertical scan: one source hitting many hosts -->
+  <rule id="140003" level="11" frequency="30" timeframe="180">
+    <if_matched_sid>140001</if_matched_sid>
+    <same_field>srcip</same_field>
+    <different_field>dstip</different_field>
+    <description>Network sweep from $(srcip): 30+ distinct hosts probed in 3 minutes</description>
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+    <group>attack.discovery,network_sweep,correlation,</group>
+  </rule>
+
+  <!-- Traffic to known-bad infrastructure -->
+  <rule id="140004" level="13">
+    <if_sid>140000</if_sid>
+    <list field="dstip" lookup="address_match_key">etc/lists/known-bad-ips</list>
+    <description>Outbound connection to known-bad infrastructure $(dstip) from $(srcip)</description>
+    <mitre>
+      <id>T1071</id>
+    </mitre>
+    <group>attack.command_and_control,threat_intel_match,</group>
+  </rule>
+
+  <!-- Egress on non-approved ports from server segments -->
+  <rule id="140005" level="11">
+    <if_sid>140000</if_sid>
+    <field name="action">^pass$</field>
+    <field name="direction">^out$</field>
+    <field name="dstport" type="pcre2">^(4444|5555|1337|6667|6697|9001|9030|31337|8888)$</field>
+    <description>Egress on a high-risk port $(dstport) to $(dstip)</description>
+    <mitre>
+      <id>T1571</id>
+    </mitre>
+    <group>attack.command_and_control,suspicious_egress,</group>
+  </rule>
+
+  <!-- Beaconing heuristic: steady low-volume outbound to the same destination -->
+  <rule id="140006" level="12" frequency="20" timeframe="600">
+    <if_sid>140000</if_sid>
+    <field name="action">^pass$</field>
+    <same_field>dstip</same_field>
+    <same_field>srcip</same_field>
+    <description>Repetitive outbound sessions $(srcip) -&gt; $(dstip) - candidate C2 beacon, confirm interval in Graylog</description>
+    <mitre>
+      <id>T1071.001</id>
+    </mitre>
+    <group>attack.command_and_control,beacon_candidate,correlation,</group>
+  </rule>
+
+  <!-- DNS exfiltration signal from firewall/DNS logs -->
+  <rule id="140007" level="12">
+    <if_sid>140000</if_sid>
+    <field name="dstport">^53$</field>
+    <field name="dstip" type="pcre2">^(?!10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.).+</field>
+    <description>Direct DNS to external resolver $(dstip) bypassing internal DNS</description>
+    <mitre>
+      <id>T1071.004</id>
+      <id>T1048.003</id>
+    </mitre>
+    <group>attack.exfiltration,dns_bypass,</group>
+  </rule>
+
+  <!-- VPN concentrator: many failed then one success -->
+  <rule id="140008" level="13" frequency="6" timeframe="300">
+    <if_matched_sid>140001</if_matched_sid>
+    <same_field>srcip</same_field>
+    <field name="dstport">^(443|1194|500|4500)$</field>
+    <description>Repeated blocked VPN attempts from $(srcip) - remote access brute force</description>
+    <mitre>
+      <id>T1133</id>
+    </mitre>
+    <group>attack.initial_access,vpn_bruteforce,correlation,</group>
+  </rule>
+
+</group>

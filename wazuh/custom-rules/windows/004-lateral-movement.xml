@@ -1,0 +1,101 @@
+<!--
+  Windows :: Lateral Movement
+  Rule ID range : 120300-120399
+  Data source   : Security 4624/4648/5145, Sysmon 1
+  Depends on    : etc/lists/service-accounts (see wazuh/custom-lists/)
+  MITRE         : TA0008 Lateral Movement
+-->
+<group name="windows,lateral_movement,custom,">
+
+  <rule id="120300" level="4">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID">^4624$</field>
+    <field name="win.eventdata.logonType">^3$</field>
+    <field name="win.eventdata.authenticationPackageName" type="pcre2">(?i)^NTLM</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">^(?!.*\$$).+</field>
+    <description>NTLM network logon for $(win.eventdata.targetUserName) from $(win.eventdata.ipAddress)</description>
+    <mitre>
+      <id>T1021.002</id>
+    </mitre>
+    <group>ntlm_logon,</group>
+  </rule>
+
+  <rule id="120301" level="13" frequency="5" timeframe="300">
+    <if_matched_sid>120300</if_matched_sid>
+    <same_field>win.eventdata.ipAddress</same_field>
+    <different_field>win.system.computer</different_field>
+    <description>Source $(win.eventdata.ipAddress) authenticated to 5+ distinct hosts in 5 minutes - lateral spread</description>
+    <mitre>
+      <id>T1021.002</id>
+      <id>T1078</id>
+    </mitre>
+    <group>attack.lateral_movement,correlation,</group>
+  </rule>
+
+  <rule id="120302" level="12">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID">^5145$</field>
+    <field name="win.eventdata.shareName" type="pcre2">(?i)(ADMIN\$|C\$|IPC\$)</field>
+    <field name="win.eventdata.relativeTargetName" type="pcre2">(?i)(svcctl|atsvc|winreg|\.exe$|\.dll$)</field>
+    <description>Admin share access to $(win.eventdata.relativeTargetName) - PsExec or remote service pattern</description>
+    <mitre>
+      <id>T1021.002</id>
+      <id>T1570</id>
+    </mitre>
+    <group>attack.lateral_movement,admin_share,</group>
+  </rule>
+
+  <rule id="120303" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(psexec|psexesvc|paexec|winrs|wmiexec|smbexec|atexec)\w*\.exe$</field>
+    <description>Remote execution utility launched on $(win.system.computer): $(win.eventdata.image)</description>
+    <mitre>
+      <id>T1569.002</id>
+    </mitre>
+    <group>attack.lateral_movement,remote_exec_tool,</group>
+  </rule>
+
+  <rule id="120304" level="11">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\(wsmprovhost|winrshost)\.exe$</field>
+    <description>Process spawned by WinRM host on $(win.system.computer): $(win.eventdata.image)</description>
+    <mitre>
+      <id>T1021.006</id>
+    </mitre>
+    <group>attack.lateral_movement,winrm,</group>
+  </rule>
+
+  <rule id="120305" level="10">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID">^4648$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^(administrator|admin|.*_adm|svc_.*)$</field>
+    <description>Explicit-credential logon to privileged account $(win.eventdata.targetUserName) by $(win.eventdata.subjectUserName)</description>
+    <mitre>
+      <id>T1078.002</id>
+    </mitre>
+    <group>attack.lateral_movement,explicit_creds,</group>
+  </rule>
+
+  <rule id="120306" level="13">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID">^4624$</field>
+    <field name="win.eventdata.logonType">^(2|10)$</field>
+    <list field="win.eventdata.targetUserName" lookup="match_key">etc/lists/service-accounts</list>
+    <description>Interactive logon by service account $(win.eventdata.targetUserName) - policy violation</description>
+    <mitre>
+      <id>T1078.003</id>
+    </mitre>
+    <group>attack.lateral_movement,service_account_misuse,</group>
+  </rule>
+
+  <rule id="120307" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(net(\.exe)?\s+use\s+\\\\|copy\s+.{0,80}\\\\[a-z0-9._-]+\\(c|admin)\$|robocopy\s+.{0,40}\\\\)</field>
+    <description>Remote file staging over SMB from $(win.system.computer)</description>
+    <mitre>
+      <id>T1570</id>
+    </mitre>
+    <group>attack.lateral_movement,tool_transfer,</group>
+  </rule>
+
+</group>

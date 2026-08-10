@@ -1,0 +1,33 @@
+<group name="windows,powershell,custom,">
+  <rule id="120001" level="6">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID">^4688$</field>
+    <field name="win.eventdata.newProcessName" type="pcre2">(?i)\\powershell(\.exe)?$</field>
+    <description>Windows PowerShell process creation observed</description>
+    <group>process_creation,powershell,</group>
+  </rule>
+
+  <rule id="120002" level="12">
+    <if_sid>120001</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(?:-enc|-encodedcommand)\s+[A-Za-z0-9+/=]{20,}</field>
+    <description>Suspicious PowerShell encoded command execution detected</description>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1027</id>
+    </mitre>
+    <group>attack.execution,defense_evasion,powershell_encoded,</group>
+  </rule>
+
+  <rule id="120003" level="13">
+    <if_sid>120001</if_sid>
+    <field name="win.eventdata.parentProcessName" type="pcre2">(?i)\\(winword|excel|outlook|powerpnt|onenote)\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(invoke-webrequest|iwr|downloadstring|iex\s*\(|invoke-expression)</field>
+    <description>PowerShell launched from Office application with download or in-memory execution pattern</description>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1204</id>
+      <id>T1105</id>
+    </mitre>
+    <group>attack.execution,initial_access,powershell_office_chain,</group>
+  </rule>
+</group>

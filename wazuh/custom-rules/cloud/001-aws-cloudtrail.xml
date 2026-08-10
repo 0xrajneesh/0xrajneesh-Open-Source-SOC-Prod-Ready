@@ -1,0 +1,102 @@
+<!--
+  Cloud :: AWS CloudTrail
+  Rule ID range : 150000-150099
+  Data source   : Wazuh AWS module (aws-s3 / CloudTrail bucket) -> decoded as JSON, group amazon
+  MITRE         : TA0005 Defense Evasion, TA0006 Credential Access, TA0010 Exfiltration
+-->
+<group name="amazon,aws,cloudtrail,custom,">
+
+  <rule id="150000" level="12">
+    <if_sid>80200</if_sid>
+    <field name="aws.eventName" type="pcre2">^(StopLogging|DeleteTrail|UpdateTrail|PutEventSelectors)$</field>
+    <description>CloudTrail logging tampered with by $(aws.userIdentity.arn): $(aws.eventName)</description>
+    <mitre>
+      <id>T1562.008</id>
+    </mitre>
+    <group>attack.defense_evasion,cloudtrail_tampering,</group>
+  </rule>
+
+  <rule id="150001" level="12">
+    <if_sid>80200</if_sid>
+    <field name="aws.eventName" type="pcre2">^(DeleteFlowLogs|DisableEbsEncryptionByDefault|DeleteDetector|DisassociateFromMasterAccount|DeleteConfigRule|StopConfigurationRecorder)$</field>
+    <description>Cloud security control disabled by $(aws.userIdentity.arn): $(aws.eventName)</description>
+    <mitre>
+      <id>T1562.001</id>
+    </mitre>
+    <group>attack.defense_evasion,guardrail_disabled,</group>
+  </rule>
+
+  <rule id="150002" level="12">
+    <if_sid>80200</if_sid>
+    <field name="aws.eventName" type="pcre2">^(CreateAccessKey|CreateUser|AttachUserPolicy|AttachRolePolicy|PutUserPolicy|CreateLoginProfile|UpdateAssumeRolePolicy)$</field>
+    <description>IAM privilege change by $(aws.userIdentity.arn): $(aws.eventName) on $(aws.requestParameters.userName)</description>
+    <mitre>
+      <id>T1098.001</id>
+      <id>T1136.003</id>
+    </mitre>
+    <group>attack.persistence,iam_change,</group>
+  </rule>
+
+  <rule id="150003" level="13">
+    <if_sid>80200</if_sid>
+    <field name="aws.errorCode" type="pcre2">^(AccessDenied|UnauthorizedOperation|Client.UnauthorizedOperation)$</field>
+    <description>Denied AWS API call $(aws.eventName) by $(aws.userIdentity.arn)</description>
+    <group>aws_access_denied,</group>
+  </rule>
+
+  <rule id="150004" level="13" frequency="12" timeframe="300">
+    <if_matched_sid>150003</if_matched_sid>
+    <same_field>aws.userIdentity.arn</same_field>
+    <description>Permission enumeration: 12+ denied API calls from $(aws.userIdentity.arn) in 5 minutes</description>
+    <mitre>
+      <id>T1580</id>
+    </mitre>
+    <group>attack.discovery,cloud_enum,correlation,</group>
+  </rule>
+
+  <rule id="150005" level="13">
+    <if_sid>80200</if_sid>
+    <field name="aws.eventName" type="pcre2">^(PutBucketPolicy|PutBucketAcl|PutObjectAcl|DeleteBucketPolicy|PutBucketPublicAccessBlock)$</field>
+    <field name="aws.requestParameters" type="pcre2">(?i)(AllUsers|AuthenticatedUsers|"public"|"Principal"\s*:\s*"\*")</field>
+    <description>S3 bucket exposed publicly by $(aws.userIdentity.arn)</description>
+    <mitre>
+      <id>T1530</id>
+    </mitre>
+    <group>attack.exfiltration,s3_exposure,</group>
+  </rule>
+
+  <rule id="150006" level="12">
+    <if_sid>80200</if_sid>
+    <field name="aws.eventName" type="pcre2">^(GetSecretValue|Decrypt|GetParameters?)$</field>
+    <field name="aws.userIdentity.type">^IAMUser$</field>
+    <description>Secret material retrieved by IAM user $(aws.userIdentity.userName)</description>
+    <mitre>
+      <id>T1552.001</id>
+    </mitre>
+    <group>attack.credential_access,secret_access,</group>
+  </rule>
+
+  <rule id="150007" level="14">
+    <if_sid>80200</if_sid>
+    <field name="aws.userIdentity.type">^Root$</field>
+    <field name="aws.eventName" type="pcre2">^(?!ConsoleLogin$).+</field>
+    <description>Root account used for API action $(aws.eventName) - breaks least privilege policy</description>
+    <mitre>
+      <id>T1078.004</id>
+    </mitre>
+    <group>attack.privilege_escalation,root_usage,</group>
+  </rule>
+
+  <rule id="150008" level="12">
+    <if_sid>80200</if_sid>
+    <field name="aws.eventName">^ConsoleLogin$</field>
+    <field name="aws.additionalEventData.MFAUsed">^No$</field>
+    <field name="aws.responseElements.ConsoleLogin">^Success$</field>
+    <description>Console sign-in without MFA by $(aws.userIdentity.arn) from $(aws.sourceIPAddress)</description>
+    <mitre>
+      <id>T1078.004</id>
+    </mitre>
+    <group>attack.initial_access,no_mfa,</group>
+  </rule>
+
+</group>

@@ -1,0 +1,36 @@
+<!--
+  Decoder :: nginx JSON access log
+
+  Configure nginx to emit JSON so no regex maintenance is needed:
+
+    log_format soc_json escape=json '{'
+      '"timestamp":"$time_iso8601",'
+      '"srcip":"$remote_addr",'
+      '"dstuser":"$remote_user",'
+      '"method":"$request_method",'
+      '"url":"$request_uri",'
+      '"protocol":"$server_protocol",'
+      '"status_code":"$status",'
+      '"bytes":"$body_bytes_sent",'
+      '"referer":"$http_referer",'
+      '"user_agent":"$http_user_agent",'
+      '"xff":"$http_x_forwarded_for",'
+      '"request_time":"$request_time",'
+      '"upstream":"$upstream_addr",'
+      '"vhost":"$host"'
+    '}';
+    access_log /var/log/nginx/access.json soc_json;
+
+  Agent localfile block: see wazuh/config/agent-web-profile.conf
+  Wazuh decodes JSON natively; this decoder only tags the source so rules can key on it.
+-->
+<decoder name="nginx-json">
+  <prematch>^{"timestamp":</prematch>
+  <plugin_decoder>JSON_Decoder</plugin_decoder>
+</decoder>
+
+<decoder name="nginx-json-tag">
+  <parent>nginx-json</parent>
+  <regex>"vhost":"(\S+)"</regex>
+  <order>hostname</order>
+</decoder>

@@ -1,0 +1,94 @@
+<!--
+  Cloud :: Microsoft 365 and Entra ID (Azure AD)
+  Rule ID range : 150100-150199
+  Data source   : Wazuh Office365 module (audit.AzureActiveDirectory, audit.Exchange)
+  MITRE         : TA0001 Initial Access, TA0003 Persistence, TA0010 Exfiltration
+-->
+<group name="office365,ms-graph,entra,custom,">
+
+  <rule id="150100" level="12">
+    <if_sid>91533,91534,91535</if_sid>
+    <field name="office365.Operation" type="pcre2">(?i)^(New-InboxRule|Set-InboxRule|UpdateInboxRules)$</field>
+    <field name="office365.Parameters" type="pcre2">(?i)(ForwardTo|RedirectTo|ForwardAsAttachmentTo|DeleteMessage|MoveToFolder.{0,30}(RSS|Archive|Deleted))</field>
+    <description>Mailbox rule created that forwards or hides mail for $(office365.UserId) - BEC indicator</description>
+    <mitre>
+      <id>T1114.003</id>
+      <id>T1564.008</id>
+    </mitre>
+    <group>attack.collection,bec_inbox_rule,</group>
+  </rule>
+
+  <rule id="150101" level="12">
+    <if_sid>91533,91534,91535</if_sid>
+    <field name="office365.Operation" type="pcre2">(?i)^(Add-MailboxPermission|Set-Mailbox|Add-RecipientPermission)$</field>
+    <description>Mailbox delegation change performed by $(office365.UserId)</description>
+    <mitre>
+      <id>T1098.002</id>
+    </mitre>
+    <group>attack.persistence,mailbox_delegation,</group>
+  </rule>
+
+  <rule id="150102" level="13">
+    <if_sid>91533,91534,91535</if_sid>
+    <field name="office365.Operation" type="pcre2">(?i)^(Consent to application|Add service principal|Add app role assignment grant to user|Add delegated permission grant)$</field>
+    <description>OAuth application consent or service principal added by $(office365.UserId) - illicit consent grant vector</description>
+    <mitre>
+      <id>T1528</id>
+      <id>T1098.003</id>
+    </mitre>
+    <group>attack.persistence,oauth_consent,</group>
+  </rule>
+
+  <rule id="150103" level="13">
+    <if_sid>91533,91534,91535</if_sid>
+    <field name="office365.Operation" type="pcre2">(?i)^(Disable Strong Authentication|Update StsRefreshTokenValidFrom Timestamp|Set-ConditionalAccessPolicy|Update policy|Delete policy)$</field>
+    <description>Identity security policy weakened by $(office365.UserId): $(office365.Operation)</description>
+    <mitre>
+      <id>T1556.006</id>
+    </mitre>
+    <group>attack.defense_evasion,ca_policy_change,</group>
+  </rule>
+
+  <rule id="150104" level="12">
+    <if_sid>91533,91534,91535</if_sid>
+    <field name="office365.Operation" type="pcre2">(?i)^(UserLoggedIn|UserLoginFailed)$</field>
+    <field name="office365.ExtendedProperties.resultStatusDetail" type="pcre2">(?i)(Redirect|Failure)</field>
+    <description>Entra ID sign-in anomaly for $(office365.UserId) from $(office365.ClientIP)</description>
+    <mitre>
+      <id>T1078.004</id>
+    </mitre>
+    <group>signin_anomaly,</group>
+  </rule>
+
+  <rule id="150105" level="13" frequency="8" timeframe="600">
+    <if_matched_sid>150104</if_matched_sid>
+    <same_field>office365.UserId</same_field>
+    <different_field>office365.ClientIP</different_field>
+    <description>Sign-in attempts for $(office365.UserId) from 8+ distinct IPs in 10 minutes - token replay or stuffing</description>
+    <mitre>
+      <id>T1110.004</id>
+    </mitre>
+    <group>attack.credential_access,correlation,</group>
+  </rule>
+
+  <rule id="150106" level="12">
+    <if_sid>91533,91534,91535</if_sid>
+    <field name="office365.Operation" type="pcre2">(?i)^(FileDownloaded|FileSyncDownloadedFull)$</field>
+    <description>Bulk SharePoint or OneDrive download by $(office365.UserId)</description>
+    <mitre>
+      <id>T1567.002</id>
+    </mitre>
+    <group>data_download,</group>
+  </rule>
+
+  <rule id="150107" level="13" frequency="50" timeframe="600">
+    <if_matched_sid>150106</if_matched_sid>
+    <same_field>office365.UserId</same_field>
+    <description>Mass download: 50+ files pulled by $(office365.UserId) in 10 minutes - possible exfiltration</description>
+    <mitre>
+      <id>T1567.002</id>
+    </mitre>
+    <group>attack.exfiltration,mass_download,correlation,</group>
+  </rule>
+
+</group>

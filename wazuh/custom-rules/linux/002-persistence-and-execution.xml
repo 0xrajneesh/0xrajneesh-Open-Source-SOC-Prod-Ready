@@ -1,0 +1,119 @@
+<!--
+  Linux :: Persistence, Execution and Defense Evasion
+  Rule ID range : 110100-110199
+  Data source   : auditd (execve), syscheck (FIM), journald/syslog
+  Requires      : audit rules from wazuh/config/audit-rules.d/soc-execve.rules
+  MITRE         : TA0002 Execution, TA0003 Persistence, TA0005 Defense Evasion
+-->
+<group name="linux,auditd,persistence,custom,">
+
+  <!-- Reverse shells built from common one-liners -->
+  <rule id="110100" level="14">
+    <if_group>audit_command</if_group>
+    <field name="audit.execve" type="pcre2">(?i)(bash\s+-i\s+&gt;&amp;\s*/dev/tcp/|nc(\.traditional)?\s+(-e|-c)\s|socat\s+.{0,40}exec:|python3?\s+-c\s+.{0,60}socket|perl\s+-e\s+.{0,60}socket|php\s+-r\s+.{0,60}fsockopen)</field>
+    <description>Reverse shell one-liner executed by $(audit.uid) on $(agent.name)</description>
+    <mitre>
+      <id>T1059.004</id>
+      <id>T1071.001</id>
+    </mitre>
+    <group>attack.execution,reverse_shell,</group>
+  </rule>
+
+  <!-- Payload downloaded and piped straight into a shell -->
+  <rule id="110101" level="13">
+    <if_group>audit_command</if_group>
+    <field name="audit.execve" type="pcre2">(?i)(curl|wget).{0,120}\|\s*(ba)?sh</field>
+    <description>Remote script downloaded and piped into a shell on $(agent.name)</description>
+    <mitre>
+      <id>T1105</id>
+      <id>T1059.004</id>
+    </mitre>
+    <group>attack.execution,download_exec,</group>
+  </rule>
+
+  <!-- Cron / systemd / profile persistence via FIM -->
+  <rule id="110102" level="10">
+    <if_group>syscheck</if_group>
+    <field name="file" type="pcre2">^/(etc/(cron\.(d|daily|hourly)|crontab|systemd/system)|var/spool/cron)</field>
+    <description>Scheduled task or unit file changed: $(file)</description>
+    <mitre>
+      <id>T1053.003</id>
+      <id>T1543.002</id>
+    </mitre>
+    <group>attack.persistence,cron_systemd,</group>
+  </rule>
+
+  <rule id="110103" level="12">
+    <if_group>syscheck</if_group>
+    <field name="file" type="pcre2">^/(etc/(profile|bash\.bashrc|profile\.d/.*|ld\.so\.preload|rc\.local)|root/\.(bashrc|profile|ssh/authorized_keys))$</field>
+    <description>Shell initialization or preload persistence path modified: $(file)</description>
+    <mitre>
+      <id>T1546.004</id>
+      <id>T1574.006</id>
+    </mitre>
+    <group>attack.persistence,shell_init,</group>
+  </rule>
+
+  <rule id="110104" level="13">
+    <if_group>syscheck</if_group>
+    <field name="file" type="pcre2">/\.ssh/authorized_keys$</field>
+    <description>SSH authorized_keys modified on $(agent.name) - possible backdoor key</description>
+    <mitre>
+      <id>T1098.004</id>
+    </mitre>
+    <group>attack.persistence,ssh_key,</group>
+  </rule>
+
+  <!-- Log and history tampering -->
+  <rule id="110105" level="13">
+    <if_group>audit_command</if_group>
+    <field name="audit.execve" type="pcre2">(?i)(unset\s+HISTFILE|export\s+HISTFILE(SIZE)?=0|history\s+-c|shred\s+.{0,40}/var/log|rm\s+-rf?\s+/var/log|truncate\s+-s\s*0\s+/var/log|journalctl\s+--vacuum-time=1s)</field>
+    <description>Log or shell history destruction on $(agent.name)</description>
+    <mitre>
+      <id>T1070.003</id>
+      <id>T1070.002</id>
+    </mitre>
+    <group>attack.defense_evasion,log_tampering,</group>
+  </rule>
+
+  <!-- Execution from world-writable or memory-backed locations -->
+  <rule id="110106" level="12">
+    <if_group>audit_command</if_group>
+    <field name="audit.exe" type="pcre2">^/(tmp|var/tmp|dev/shm|run/shm)/</field>
+    <description>Binary executed from a world-writable path: $(audit.exe)</description>
+    <mitre>
+      <id>T1036.005</id>
+    </mitre>
+    <group>attack.defense_evasion,tmp_exec,</group>
+  </rule>
+
+  <!-- Kernel module load - rootkit vector -->
+  <rule id="110107" level="12">
+    <if_group>audit_command</if_group>
+    <field name="audit.execve" type="pcre2">(?i)\b(insmod|modprobe)\b</field>
+    <description>Kernel module load requested on $(agent.name): $(audit.execve.a1)</description>
+    <mitre>
+      <id>T1547.006</id>
+    </mitre>
+    <group>attack.persistence,kernel_module,</group>
+  </rule>
+
+  <!-- Local enumeration burst before privilege escalation -->
+  <rule id="110108" level="3">
+    <if_group>audit_command</if_group>
+    <field name="audit.exe" type="pcre2">/(whoami|id|uname|hostname|netstat|ss|ps|last|w|lsb_release)$</field>
+    <description>Local enumeration command executed: $(audit.exe)</description>
+    <group>discovery,</group>
+  </rule>
+
+  <rule id="110109" level="11" frequency="8" timeframe="120">
+    <if_matched_sid>110108</if_matched_sid>
+    <same_field>audit.session</same_field>
+    <description>Enumeration burst in a single session on $(agent.name) - hands-on-keyboard activity</description>
+    <mitre>
+      <id>T1082</id>
+    </mitre>
+    <group>attack.discovery,recon_burst,correlation,</group>
+  </rule>
+
+</group>

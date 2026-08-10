@@ -1,0 +1,122 @@
+<!--
+  Authentication :: Account Abuse and Session Anomalies
+  Rule ID range : 100100-100199
+  Data source   : Windows Security, sshd, sudo, cloud IdP logs normalized by decoders
+  Depends on    : etc/lists/critical-assets, etc/lists/service-accounts
+  MITRE         : TA0006 Credential Access, TA0004 Privilege Escalation
+-->
+<group name="authentication,custom,">
+
+  <!-- Password spray: many distinct users failing from one source -->
+  <rule id="100100" level="5">
+    <if_sid>5716,5760,60122,60204</if_sid>
+    <description>Authentication failure observed for $(dstuser) from $(srcip)</description>
+    <group>authentication_failed,</group>
+  </rule>
+
+  <rule id="100101" level="12" frequency="10" timeframe="300">
+    <if_matched_sid>100100</if_matched_sid>
+    <same_field>srcip</same_field>
+    <different_field>dstuser</different_field>
+    <description>Password spray: 10+ distinct accounts failed from $(srcip) in 5 minutes</description>
+    <mitre>
+      <id>T1110.003</id>
+    </mitre>
+    <group>attack.credential_access,password_spray,correlation,</group>
+  </rule>
+
+  <!-- Brute force followed by success = probable compromise -->
+  <rule id="100102" level="14">
+    <if_sid>5715,60106,4624</if_sid>
+    <if_matched_sid>100101</if_matched_sid>
+    <same_field>srcip</same_field>
+    <timeframe>900</timeframe>
+    <description>Successful logon from $(srcip) after a spray or brute-force burst - probable account compromise</description>
+    <mitre>
+      <id>T1110</id>
+      <id>T1078</id>
+    </mitre>
+    <group>attack.credential_access,compromise_suspected,correlation,</group>
+  </rule>
+
+  <!-- Off-hours administrative access -->
+  <rule id="100103" level="10">
+    <if_sid>5715,60106</if_sid>
+    <time>7 pm - 6 am</time>
+    <field name="dstuser" type="pcre2">(?i)^(root|administrator|.*_adm|admin.*)$</field>
+    <description>Off-hours privileged logon for $(dstuser) from $(srcip)</description>
+    <mitre>
+      <id>T1078</id>
+    </mitre>
+    <group>off_hours_access,</group>
+  </rule>
+
+  <!-- Access to a critical asset from an unexpected source -->
+  <rule id="100104" level="12">
+    <if_sid>5715,60106</if_sid>
+    <list field="agent.name" lookup="match_key">etc/lists/critical-assets</list>
+    <description>Logon to critical asset $(agent.name) by $(dstuser) from $(srcip)</description>
+    <mitre>
+      <id>T1078</id>
+    </mitre>
+    <group>critical_asset_access,</group>
+  </rule>
+
+  <!-- Privilege grant / group change -->
+  <rule id="100105" level="12">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID">^(4728|4732|4756)$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)(domain admins|enterprise admins|schema admins|administrators|backup operators)</field>
+    <description>Account $(win.eventdata.memberName) added to privileged group $(win.eventdata.targetUserName)</description>
+    <mitre>
+      <id>T1098</id>
+      <id>T1078.002</id>
+    </mitre>
+    <group>attack.persistence,privileged_group_change,</group>
+  </rule>
+
+  <rule id="100106" level="12">
+    <if_group>syslog,sudo</if_group>
+    <match>incorrect password attempts|user NOT in sudoers|3 incorrect password</match>
+    <description>Repeated sudo abuse by $(srcuser) on $(agent.name)</description>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+    <group>attack.privilege_escalation,sudo_abuse,</group>
+  </rule>
+
+  <!-- New local account created outside change windows -->
+  <rule id="100107" level="11">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID">^4720$</field>
+    <description>New account $(win.eventdata.targetUserName) created by $(win.eventdata.subjectUserName)</description>
+    <mitre>
+      <id>T1136.001</id>
+    </mitre>
+    <group>account_created,</group>
+  </rule>
+
+  <rule id="100108" level="13">
+    <if_sid>100107</if_sid>
+    <time>7 pm - 6 am</time>
+    <description>Account $(win.eventdata.targetUserName) created outside business hours</description>
+    <mitre>
+      <id>T1136.001</id>
+    </mitre>
+    <group>attack.persistence,account_created,off_hours_access,</group>
+  </rule>
+
+  <!-- MFA fatigue: repeated push denials for one user -->
+  <rule id="100109" level="12" frequency="5" timeframe="600">
+    <if_matched_sid>100100</if_matched_sid>
+    <same_field>dstuser</same_field>
+    <different_field>srcip</different_field>
+    <description>Same account $(dstuser) failed from 5+ distinct sources in 10 minutes - MFA fatigue or credential stuffing</description>
+    <mitre>
+      <id>T1621</id>
+      <id>T1110.004</id>
+    </mitre>
+    <group>attack.credential_access,mfa_fatigue,correlation,</group>
+  </rule>
+
+</group>
