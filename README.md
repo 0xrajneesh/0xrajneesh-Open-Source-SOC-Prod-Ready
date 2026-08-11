@@ -1,3 +1,4 @@
+
 # Open Source SOC Production
 
 <p align="center">
@@ -15,6 +16,8 @@
 </p>
 
 This repository is the source of truth for a custom open-source SOC stack built on a **Wazuh cluster**, **Graylog**, **Grafana**, and **n8n** running on **server nodes**, not Kubernetes.
+
+<img width="1200" height="794" alt="open source soc" src="https://github.com/user-attachments/assets/e4047ffe-1602-4db3-ad4e-b0dcc0807e89" />
 
 The goal is to version the parts that actually matter for SOC engineering:
 
